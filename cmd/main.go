@@ -49,15 +49,19 @@ import (
 	collectorv2 "github.com/llm-d-incubation/workload-variant-autoscaler/internal/collector/v2"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/config"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/controller"
+	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/datastore"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/engines/saturation"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/engines/scalefromzero"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/logging"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/metrics"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/utils"
+	poolutil "github.com/llm-d-incubation/workload-variant-autoscaler/internal/utils/pool"
 	promoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+	inferencePoolV1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	inferencePoolV1alpha2 "sigs.k8s.io/gateway-api-inference-extension/apix/v1alpha2"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -69,6 +73,8 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(llmdVariantAutoscalingV1alpha1.AddToScheme(scheme))
 	utilruntime.Must(promoperator.AddToScheme(scheme))
+	utilruntime.Must(inferencePoolV1.Install(scheme))
+	utilruntime.Must(inferencePoolV1alpha2.Install(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -246,6 +252,9 @@ func main() {
 		})
 	}
 
+	// --- Setup Datastore ---
+	ds := datastore.NewDatastore()
+
 	// Get REST config and configure timeouts to handle network latency
 	// This addresses issues with leader election lease renewal failures in environments
 	// with higher network latency or API server slowness.
@@ -422,7 +431,10 @@ func main() {
 
 	// Register scale from zero engine loop with the manager. Only start when leader.
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		engine := scalefromzero.NewEngine(mgr.GetClient())
+		engine, err := scalefromzero.NewEngine(mgr.GetClient(), restConfig, ds)
+		if err != nil {
+			return err
+		}
 		go engine.StartOptimizeLoop(ctx)
 		return nil
 	}))
@@ -447,6 +459,18 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
+
+	// Create InferencePool reconciler
+	inferencePoolReconciler := &controller.InferencePoolReconciler{
+		Datastore: ds,
+		Reader:    mgr.GetClient(),
+		PoolGKNN:  poolutil.DefaultPoolGKNN(),
+	}
+
+	if err = inferencePoolReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create inferencePool controller")
+		os.Exit(1)
+	}
 
 	if metricsCertWatcher != nil {
 		setupLog.Info("Adding metrics certificate watcher to manager")
