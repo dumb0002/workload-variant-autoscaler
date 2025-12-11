@@ -48,6 +48,7 @@ import (
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/engines/scalefromzero"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/logger"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/metrics"
+	poolutils "github.com/llm-d-incubation/workload-variant-autoscaler/internal/utils/pool"
 	promoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	//+kubebuilder:scaffold:imports
@@ -235,6 +236,9 @@ func main() {
 		})
 	}
 
+	// --- Setup Datastore ---
+	datastore := poolutils.NewDatastore()
+
 	// Get REST config and configure timeouts to handle network latency
 	// This addresses issues with leader election lease renewal failures in environments
 	// with higher network latency or API server slowness.
@@ -289,7 +293,7 @@ func main() {
 
 	// Register scale from zero engine loops with the manager. Only start when leader.
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		engine := scalefromzero.NewEngine(mgr.GetClient())
+		engine := scalefromzero.NewEngine(mgr.GetClient(), restConfig, datastore)
 		go engine.StartOptimizeLoop(ctx)
 		return nil
 	}))
@@ -309,6 +313,19 @@ func main() {
 	// Setup the controller with the manager
 	if err = reconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error("unable to create controller", zap.String("controller", "variantautoscaling"), zap.Error(err))
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
+
+	// Create InferencePool reconciler
+	inferencePoolReconciler := &controller.InferencePoolReconciler{
+		Datastore: datastore,
+		Reader:    mgr.GetClient(),
+		PoolGKNN:  poolutils.GetGNN(),
+	}
+
+	if err = inferencePoolReconciler.SetupWithManager(mgr); err != nil {
+		setupLog.Error("unable to create controller", zap.String("controller", "inferencePool"), zap.Error(err))
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
