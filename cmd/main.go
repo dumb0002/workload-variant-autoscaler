@@ -244,6 +244,9 @@ func main() {
 		})
 	}
 
+	// --- Setup Datastore ---
+	datastore := poolutils.NewDatastore()
+
 	// Get REST config and configure timeouts to handle network latency
 	// This addresses issues with leader election lease renewal failures in environments
 	// with higher network latency or API server slowness.
@@ -403,7 +406,7 @@ func main() {
 
 	// Register scale from zero engine loop with the manager. Only start when leader.
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		engine := scalefromzero.NewEngine(mgr.GetClient())
+		engine := scalefromzero.NewEngine(mgr.GetClient(), restConfig, datastore)
 		go engine.StartOptimizeLoop(ctx)
 		return nil
 	}))
