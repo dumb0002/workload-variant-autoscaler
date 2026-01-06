@@ -61,10 +61,8 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool
 		return nil, err
 	}
 
-	var (
-		portNumber      int32 = 0
-		existMetricPort bool  = false
-	)
+	var portNumber int32
+	existMetricPort := false
 
 	for _, port := range service.Spec.Ports {
 		if port.Name == "metrics" {
