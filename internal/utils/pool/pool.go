@@ -110,7 +110,7 @@ func GetLabelValueHash(labels map[string]string) string {
 	return hex.EncodeToString(hashBytes)
 }
 
-func GetGNN() common.GKNN {
+func GKNN() common.GKNN {
 	var (
 		DefaultPoolGroup     = "inference.networking.k8s.io"
 		DefaultPoolName      = "defaultPool"
