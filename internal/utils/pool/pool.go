@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strings"
 
@@ -60,12 +61,21 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool
 		return nil, err
 	}
 
-	var portNumber int32
+	var (
+		portNumber      int32 = 0
+		existMetricPort bool  = false
+	)
+
 	for _, port := range service.Spec.Ports {
 		if port.Name == "metrics" {
 			portNumber = port.Port
+			existMetricPort = true
 			break
 		}
+	}
+
+	if !existMetricPort {
+		return nil, errors.New("missing named port `metrics` for the service associated with the target inferencepool")
 	}
 
 	epp := EndpointPicker{
