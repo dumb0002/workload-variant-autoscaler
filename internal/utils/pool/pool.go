@@ -73,7 +73,7 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool
 	}
 
 	if !existMetricPort {
-		return nil, errors.New("missing named port `metrics` for the service associated with the target inferencepool")
+		return nil, errors.New("missing named port `metrics` for the service associated with the target InferencePool")
 	}
 
 	epp := EndpointPicker{
@@ -95,7 +95,7 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool
 	return endpointPool, nil
 }
 
-// GetLabelValueHash takes a list of labels and extract the values, sorts them, concatenates them,
+// GetLabelValueHash takes a list of labels and extracts the values, sorts them, concatenates them,
 // and returns the SHA256 hash of the resulting string. This function will help us to find the target
 // InferencePool given the labels for a pod attached to the InferencePool
 func GetLabelValueHash(labels map[string]string) string {
