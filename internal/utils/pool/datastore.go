@@ -91,8 +91,13 @@ func (ds *datastore) PoolList() []EndpointPool {
 }
 
 func (ds *datastore) PoolDelete(name string) {
+	pool, err := ds.PoolGet(name)
+	if err == nil {
+		key := GetLabelValueHash(pool.Selector)
+		ds.labelCache.Delete(key)
+	}
+
 	ds.pools.Delete(name)
-	ds.labelCache.Delete(name)
 }
 
 func (ds *datastore) Clear() {

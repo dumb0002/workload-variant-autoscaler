@@ -103,7 +103,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 	sem := make(chan struct{}, maxConcurrency)
 
 	for _, va := range inactiveVAs {
-		ctrl.Log.V(logging.DEBUG).Info("Processing variant: %s", va.Name)
+		ctrl.Log.V(logging.DEBUG).Info("Processing variant", "name", va.Name)
 		wg.Add(1)
 
 		// This call blocks if the channel is full (concurrency limit reached)
@@ -115,7 +115,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 
 			err := e.processVA(ctx, va)
 			if err != nil {
-				ctrl.Log.V(logging.DEBUG).Error(err, "Processing variant: %s", va.Name)
+				ctrl.Log.V(logging.DEBUG).Error(err, "Processing variant", "name", va.Name)
 			}
 		}()
 	}
