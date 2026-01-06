@@ -18,7 +18,6 @@ package scalefromzero
 
 import (
 	"context"
-	"os"
 	"sync"
 	"time"
 
@@ -99,11 +98,26 @@ func (e *Engine) optimize(ctx context.Context) error {
 
 	ctrl.Log.V(logging.DEBUG).Info("Found inactive VariantAutoscaling resources", "count", len(inactiveVAs))
 
-	var wg sync.WaitGroup // Note: add a limit to the number of workers
+	var wg sync.WaitGroup
+	const maxConcurrency = 20
+	sem := make(chan struct{}, maxConcurrency)
+
 	for _, va := range inactiveVAs {
-		ctrl.Log.V(logging.DEBUG).Info("Processing variant: id=%s", va.Name)
+		ctrl.Log.V(logging.DEBUG).Info("Processing variant: %s", va.Name)
 		wg.Add(1)
-		go e.processVA(ctx, va, &wg)
+
+		// This call blocks if the channel is full (concurrency limit reached)
+		sem <- struct{}{}
+		// go e.processVA(ctx, va, &wg, &sem)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			err := e.processVA(ctx, va)
+			if err != nil {
+				ctrl.Log.V(logging.DEBUG).Error(err, "Processing variant: %s", va.Name)
+			}
+		}()
 	}
 
 	wg.Wait()
@@ -111,8 +125,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 }
 
 // optimize performs the optimization logic.
-func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscaling, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscaling) error {
 	objAPI := va.GetScaleTargetAPI()
 	objKind := va.GetScaleTargetKind()
 	objName := va.GetScaleTargetName()
@@ -120,14 +133,14 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	// Parse Group, Version, Kind, Resource
 	gvr, err := GetResourceForKind(e.Mapper, objAPI, objKind)
 	if err != nil {
-		ctrl.Log.V(logging.DEBUG).Error(err, "Failed to parse Group, Version, Kind, Resource", "apiVersion", objAPI, "kind", objKind)
-		os.Exit(1)
+		//ctrl.Log.V(logging.DEBUG).Error(err, "Failed to parse Group, Version, Kind, Resource", "apiVersion", objAPI, "kind", objKind)
+		return err
 	}
 
 	unstructuredObj, err := e.DynamicClient.Resource(gvr).Namespace(va.Namespace).Get(ctx, objName, metav1.GetOptions{})
 	if err != nil {
-		ctrl.Log.V(logging.DEBUG).Error(err, "Error getting unstructured object")
-		os.Exit(1)
+		//ctrl.Log.V(logging.DEBUG).Error(err, "Error getting unstructured object")
+		return err
 	}
 
 	//Extract Labels for the pods created by the ScaleTarget object
@@ -137,8 +150,8 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	err = mapstructure.Decode(result, &labels)
 
 	if err != nil {
-		ctrl.Log.V(logging.DEBUG).Error(err, "Error converting labels interface to a map[string]string")
-		os.Exit(1)
+		//ctrl.Log.V(logging.DEBUG).Error(err, "Error converting labels interface to a map[string]string")
+		return err
 	}
 
 	//Find inferencePool associated with pods created by the ScaleTarget object
@@ -147,12 +160,13 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	//Find target EPP for metrics collection
 	pool, err := e.Datastore.PoolGetFromHashKey(key)
 	if err != nil {
-		ctrl.Log.V(logging.DEBUG).Error(err, "Target inferencePool not found in the datastore")
-		os.Exit(1)
+		//ctrl.Log.V(logging.DEBUG).Error(err, "Target inferencePool not found in the datastore")
+		return err
 	}
 
 	epp := pool.EndpointPicker
-	ctrl.Log.V(logging.DEBUG).Info("Target EPP service found: name=%s", epp.ServiceName)
+	ctrl.Log.V(logging.DEBUG).Info("Target EPP service found", "name", epp.ServiceName)
 
 	// TODO: Create EPP source and query metrics port
+	return nil
 }
