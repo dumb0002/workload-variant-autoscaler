@@ -52,6 +52,7 @@ import (
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/logging"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/metrics"
 	"github.com/llm-d-incubation/workload-variant-autoscaler/internal/utils"
+	poolutils "github.com/llm-d-incubation/workload-variant-autoscaler/internal/utils/pool"
 	promoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"

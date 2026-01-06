@@ -94,7 +94,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 
 	var wg sync.WaitGroup // Note: add a limit to the number of workers
 	for _, va := range inactiveVAs {
-		logger.Log.Infof("Processing variant: id=%s", va.Name)
+		ctrl.Log.V(logging.DEBUG).Info("Processing variant: id=%s", va.Name)
 		wg.Add(1)
 		go e.processVA(ctx, va, &wg)
 	}
@@ -113,13 +113,13 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	// Parse Group, Version, Kind, Resource
 	gvr, err := GetResourceForKind(e.Mapper, objAPI, objKind)
 	if err != nil {
-		logger.Log.Error(err, "Failed to parse Group, Version, Kind, Resource", "apiVersion", objAPI, "kind", objKind)
+		ctrl.Log.V(logging.DEBUG).Error(err, "Failed to parse Group, Version, Kind, Resource", "apiVersion", objAPI, "kind", objKind)
 		os.Exit(1)
 	}
 
 	unstructuredObj, err := e.DynamicClient.Resource(gvr).Namespace(va.Namespace).Get(ctx, objName, metav1.GetOptions{})
 	if err != nil {
-		logger.Log.Error(err, "Error getting unstructured object")
+		ctrl.Log.V(logging.DEBUG).Error(err, "Error getting unstructured object")
 		os.Exit(1)
 	}
 
@@ -130,7 +130,7 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	err = mapstructure.Decode(result, &labels)
 
 	if err != nil {
-		logger.Log.Error(err, "Error converting labels interface to a map[string]string")
+		ctrl.Log.V(logging.DEBUG).Error(err, "Error converting labels interface to a map[string]string")
 		os.Exit(1)
 	}
 
@@ -140,12 +140,12 @@ func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscalin
 	//Find target EPP for metrics collection
 	pool, err := e.Datastore.PoolGetFromHashKey(key)
 	if err != nil {
-		logger.Log.Error(err, "Target inferencePool not found in the datastore")
+		ctrl.Log.V(logging.DEBUG).Error(err, "Target inferencePool not found in the datastore")
 		os.Exit(1)
 	}
 
 	epp := pool.EndpointPicker
-	logger.Log.Infof("Target EPP service found: name=%s", epp.ServiceName)
+	ctrl.Log.V(logging.DEBUG).Info("Target EPP service found: name=%s", epp.ServiceName)
 
 	// TODO: Create EPP source and query metrics port
 }
