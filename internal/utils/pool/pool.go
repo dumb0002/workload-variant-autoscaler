@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -44,22 +43,21 @@ type EndpointPicker struct {
 	MetricsPortNumber int32
 }
 
-func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) *EndpointPool {
+func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool, error) {
 	if inferencePool == nil {
-		return nil
+		return nil, nil
 	}
 
 	clientset, err := K8sClient()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	// Find EPP Metrics Port Number from EPP Service
 	serviceName := string(inferencePool.Spec.EndpointPickerRef.Name)
 	service, err := clientset.CoreV1().Services(inferencePool.Namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	if err != nil {
-		fmt.Printf("Error getting service %s in namespace %s: %v\n", serviceName, inferencePool.Namespace, err)
-		return nil
+		return nil, err
 	}
 
 	var portNumber int32
@@ -86,7 +84,7 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) *EndpointPool 
 		Name:           inferencePool.Name,
 		EndpointPicker: epp,
 	}
-	return endpointPool
+	return endpointPool, nil
 }
 
 // GetLabelValueHash takes a list of labels and extract the values, sorts them, concatenates them,

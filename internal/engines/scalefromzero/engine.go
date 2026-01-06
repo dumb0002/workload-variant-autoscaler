@@ -113,9 +113,9 @@ func (e *Engine) optimize(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			err := e.processVA(ctx, va)
+			err := e.processInactiveVariant(ctx, va)
 			if err != nil {
-				ctrl.Log.V(logging.DEBUG).Error(err, "Processing variant", "name", va.Name)
+				ctrl.Log.V(logging.DEBUG).Error(err, "Error Processing variant", "name", va.Name)
 			}
 		}()
 	}
@@ -125,7 +125,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 }
 
 // optimize performs the optimization logic.
-func (e *Engine) processVA(ctx context.Context, va wvav1alpha1.VariantAutoscaling) error {
+func (e *Engine) processInactiveVariant(ctx context.Context, va wvav1alpha1.VariantAutoscaling) error {
 	objAPI := va.GetScaleTargetAPI()
 	objKind := va.GetScaleTargetKind()
 	objName := va.GetScaleTargetName()

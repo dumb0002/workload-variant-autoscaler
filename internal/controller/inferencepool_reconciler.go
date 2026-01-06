@@ -88,8 +88,15 @@ func (c *InferencePoolReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("unsupported API group: %s", c.PoolGKNN.Group)
 	}
 
-	pool := poolutils.InferencePoolToEndpointPool(v1infPool)
-	c.Datastore.PoolSet(pool)
+	pool, err := poolutils.InferencePoolToEndpointPool(v1infPool)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to convert InferencePool to EndPointPool - %w", err)
+	}
+
+	if pool != nil {
+		c.Datastore.PoolSet(pool)
+	}
+
 	return ctrl.Result{}, nil
 }
 
