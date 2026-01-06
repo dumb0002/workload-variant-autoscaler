@@ -97,7 +97,7 @@ func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool
 
 // GetLabelValueHash takes a list of labels and extract the values, sorts them, concatenates them,
 // and returns the SHA256 hash of the resulting string. This function will help us to find the target
-// InferencePool given the labels for a pod attached to the inferencePool
+// InferencePool given the labels for a pod attached to the InferencePool
 func GetLabelValueHash(labels map[string]string) string {
 	valueList := []string{}
 	for _, value := range labels {

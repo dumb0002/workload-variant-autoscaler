@@ -108,7 +108,6 @@ func (e *Engine) optimize(ctx context.Context) error {
 
 		// This call blocks if the channel is full (concurrency limit reached)
 		sem <- struct{}{}
-		// go e.processVA(ctx, va, &wg, &sem)
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -133,34 +132,30 @@ func (e *Engine) processInactiveVariant(ctx context.Context, va wvav1alpha1.Vari
 	// Parse Group, Version, Kind, Resource
 	gvr, err := GetResourceForKind(e.Mapper, objAPI, objKind)
 	if err != nil {
-		//ctrl.Log.V(logging.DEBUG).Error(err, "Failed to parse Group, Version, Kind, Resource", "apiVersion", objAPI, "kind", objKind)
 		return err
 	}
 
 	unstructuredObj, err := e.DynamicClient.Resource(gvr).Namespace(va.Namespace).Get(ctx, objName, metav1.GetOptions{})
 	if err != nil {
-		//ctrl.Log.V(logging.DEBUG).Error(err, "Error getting unstructured object")
 		return err
 	}
 
-	//Extract Labels for the pods created by the ScaleTarget object
+	// Extract Labels for the pods created by the ScaleTarget object
 	result := unstructuredObj.Object["spec"].(map[string]any)["template"].(map[string]any)["metadata"].(map[string]any)["labels"]
 
 	var labels map[string]string
 	err = mapstructure.Decode(result, &labels)
 
 	if err != nil {
-		//ctrl.Log.V(logging.DEBUG).Error(err, "Error converting labels interface to a map[string]string")
 		return err
 	}
 
-	//Find inferencePool associated with pods created by the ScaleTarget object
+	// Find inferencePool associated with pods created by the ScaleTarget object
 	key := poolutils.GetLabelValueHash(labels)
 
-	//Find target EPP for metrics collection
+	// Find target EPP for metrics collection
 	pool, err := e.Datastore.PoolGetFromHashKey(key)
 	if err != nil {
-		//ctrl.Log.V(logging.DEBUG).Error(err, "Target inferencePool not found in the datastore")
 		return err
 	}
 

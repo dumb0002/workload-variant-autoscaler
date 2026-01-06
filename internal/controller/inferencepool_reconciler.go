@@ -41,7 +41,7 @@ func (c *InferencePoolReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	logger := log.FromContext(ctx).WithValues("group", c.PoolGKNN.Group).V(logutil.DEFAULT)
 	ctx = ctrl.LoggerInto(ctx, logger)
 
-	logger.Info("Reconciling InferencePool")
+	logger.Info("Reconciling InferencePool", "namespace", req.Namespace, "name", req.Name)
 
 	// 1. Initialize a generic client.Object based on the group.
 	var obj client.Object
