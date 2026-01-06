@@ -407,7 +407,10 @@ func main() {
 
 	// Register scale from zero engine loop with the manager. Only start when leader.
 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		engine := scalefromzero.NewEngine(mgr.GetClient(), restConfig, datastore)
+		engine, err := scalefromzero.NewEngine(mgr.GetClient(), restConfig, datastore)
+		if err != nil {
+			return err
+		}
 		go engine.StartOptimizeLoop(ctx)
 		return nil
 	}))

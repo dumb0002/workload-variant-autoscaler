@@ -52,9 +52,16 @@ type Engine struct {
 }
 
 // NewEngine creates a new instance of the scale-from-zero engine.
-func NewEngine(client client.Client, config *rest.Config, datastore poolutils.Datastore) *Engine {
-	dynamicClient, _ := dynamic.NewForConfig(config)
-	scaleClient, mapper, _ := poolutils.InitScaleClient(config)
+func NewEngine(client client.Client, config *rest.Config, datastore poolutils.Datastore) (*Engine, error) {
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	scaleClient, mapper, err := poolutils.InitScaleClient(config)
+	if err != nil {
+		return nil, err
+	}
 
 	engine := Engine{
 		client:        client,
@@ -73,7 +80,7 @@ func NewEngine(client client.Client, config *rest.Config, datastore poolutils.Da
 		RetryBackoff: 100 * time.Millisecond,
 	})
 
-	return &engine
+	return &engine, nil
 }
 
 // StartOptimizeLoop starts the optimization loop for the scale-from-zero engine.
