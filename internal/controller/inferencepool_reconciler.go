@@ -66,7 +66,7 @@ func (c *InferencePoolReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// 3. Perform common checks using the client.Object interface.
 	if !obj.GetDeletionTimestamp().IsZero() {
-		logger.Info("InferencePool is marked for deletion. Clearing the datastore")
+		logger.Info("InferencePool is marked for deletion. Removing pool from datastore")
 		c.Datastore.PoolDelete(obj.GetName()) // remove the pool from the datastore
 		return ctrl.Result{}, nil
 	}
