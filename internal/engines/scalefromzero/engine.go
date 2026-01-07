@@ -123,7 +123,7 @@ func (e *Engine) optimize(ctx context.Context) error {
 	return nil
 }
 
-// optimize performs the optimization logic.
+// ProcessInactiveVariant processes a single inactive VariantAutoscaling resource.
 func (e *Engine) processInactiveVariant(ctx context.Context, va wvav1alpha1.VariantAutoscaling) error {
 	objAPI := va.GetScaleTargetAPI()
 	objKind := va.GetScaleTargetKind()

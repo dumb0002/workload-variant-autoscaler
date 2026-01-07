@@ -25,18 +25,7 @@ import (
 	"k8s.io/client-go/scale"
 
 	cached "k8s.io/client-go/discovery/cached"
-	"k8s.io/client-go/kubernetes"
 )
-
-func K8sClient() (*kubernetes.Clientset, error) {
-	kubeConfig, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(kubeConfig)
-	return clientset, err
-}
 
 // To be used to scale from zero an scale object
 func InitScaleClient(config *rest.Config) (scale.ScalesGetter, meta.RESTMapper, error) {

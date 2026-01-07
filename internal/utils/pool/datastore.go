@@ -49,7 +49,6 @@ func NewDatastore() Datastore {
 type datastore struct {
 	pools      *sync.Map
 	labelCache *sync.Map // stores mapping of pod labels --> inferencePool name
-
 }
 
 // Datastore operations
