@@ -24,9 +24,10 @@ import (
 	"sort"
 	"strings"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	v1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	"sigs.k8s.io/gateway-api-inference-extension/pkg/common"
 )
@@ -44,19 +45,19 @@ type EndpointPicker struct {
 	MetricsPortNumber int32
 }
 
-func InferencePoolToEndpointPool(inferencePool *v1.InferencePool) (*EndpointPool, error) {
+func InferencePoolToEndpointPool(ctx context.Context, reader client.Reader, inferencePool *v1.InferencePool) (*EndpointPool, error) {
 	if inferencePool == nil {
 		return nil, nil
 	}
 
-	clientset, err := K8sClient()
-	if err != nil {
-		return nil, err
-	}
-
 	// Find EPP Metrics Port Number from EPP Service
 	serviceName := string(inferencePool.Spec.EndpointPickerRef.Name)
-	service, err := clientset.CoreV1().Services(inferencePool.Namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	service := &corev1.Service{}
+	err := reader.Get(ctx, client.ObjectKey{
+		Namespace: inferencePool.Namespace,
+		Name:      serviceName,
+	}, service)
+
 	if err != nil {
 		return nil, err
 	}
