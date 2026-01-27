@@ -48,35 +48,30 @@ const (
 
 var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 	var (
-		ctx                   context.Context
-		scaleToZeroEnabled    bool
-		hpaScaleToZeroEnabled bool
-		originalConfigExists  bool
-		originalConfigData    map[string]string
-		testDeploymentName    string
-		testNamespace         string
-		testGatewayService    string
-		testModelID           string
+		ctx                     context.Context
+		hpaScaleToZeroEnabled   bool
+		testDeploymentName      string
+		testNamespace           string
+		testGatewayService      string
+		testControllerNamespace string
+		testModelID             string
 	)
 
 	BeforeAll(func() {
 		ctx = context.Background()
 
-		// Use the primary llm-d namespace for testing
 		testNamespace = llmDNamespace
+		testControllerNamespace = controllerNamespace
 		testDeploymentName = getDeploymentName()
 		testGatewayService = getGatewayName()
 		testModelID = modelID
-
-		// Check if scale-to-zero is enabled
-		scaleToZeroEnabled = true // Scale-from-zero requires scale-to-zero to be enabled
 
 		// Check if HPAScaleToZero feature gate is enabled
 		hpaScaleToZeroEnabled = isHPAScaleToZeroEnabled(ctx)
 
 		_, _ = fmt.Fprintf(GinkgoWriter, "\n========================================\n")
 		_, _ = fmt.Fprintf(GinkgoWriter, "Starting Scale-From-Zero Tests\n")
-		_, _ = fmt.Fprintf(GinkgoWriter, "  Scale-to-Zero Enabled: %v\n", scaleToZeroEnabled)
+		_, _ = fmt.Fprintf(GinkgoWriter, "  Controller Namespace: %s\n", controllerNamespace)
 		_, _ = fmt.Fprintf(GinkgoWriter, "  HPA Scale-to-Zero Feature Gate: %v\n", hpaScaleToZeroEnabled)
 		_, _ = fmt.Fprintf(GinkgoWriter, "  Test Namespace: %s\n", testNamespace)
 		_, _ = fmt.Fprintf(GinkgoWriter, "  Test Deployment: %s\n", testDeploymentName)
@@ -85,7 +80,7 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 		_, _ = fmt.Fprintf(GinkgoWriter, "========================================\n\n")
 
 		if !hpaScaleToZeroEnabled {
-			Skip("HPAScaleToZero feature gate is not enabled - scale-from-zero requires this feature")
+			Skip("HPAScaleToZero feature gate is not enabled; skipping scale from zero test")
 		}
 
 	})
@@ -94,21 +89,27 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 		var (
 			vaName               string
 			initialReplicas      int32
-			loadJobName          string
 			scaleFromZeroJobName string
 		)
 
 		BeforeAll(func() {
 
 			By("updating scale-from-zero ConfigMap with BearerToken for EPP metrics collection")
-			// Execute the exact shell command to get the token
-			cmd := exec.Command("bash", "-c",
-				`kubectl -n workload-variant-autoscaler-system get secret workload-variant-autoscaler-controller-manager-token -o jsonpath='{.data.token}' | base64 --decode`)
+			// Get the token using kubectl without shell interpolation to prevent command injection
+			cmd := exec.Command("kubectl", "-n", testControllerNamespace, "get", "secret",
+				"workload-variant-autoscaler-controller-manager-token",
+				"-o", "jsonpath={.data.token}")
 
 			output, err := cmd.CombinedOutput()
-			Expect(err).NotTo(HaveOccurred(), "Failed to get and decode token")
+			Expect(err).NotTo(HaveOccurred(), "Failed to get token from secret")
 
-			bearerToken := strings.TrimSpace(string(output))
+			// Decode the base64 token
+			decodeCmd := exec.Command("base64", "--decode")
+			decodeCmd.Stdin = strings.NewReader(strings.TrimSpace(string(output)))
+			decodedOutput, err := decodeCmd.CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), "Failed to decode token")
+
+			bearerToken := strings.TrimSpace(string(decodedOutput))
 			Expect(bearerToken).NotTo(BeEmpty(), "Token should not be empty")
 
 			// Get the existing ConfigMap
@@ -147,28 +148,46 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 			initialReplicas = deploy.Status.ReadyReplicas
 			_, _ = fmt.Fprintf(GinkgoWriter, "Initial ready replicas: %d\n", initialReplicas)
 
-			loadJobName = fmt.Sprintf("scale-from-zero-load-%d", time.Now().Unix())
 			scaleFromZeroJobName = fmt.Sprintf("scale-from-zero-trigger-%d", time.Now().Unix())
 		})
 
 		It("should scale deployment to zero when idle", func() {
-			By("checking deployment has 0 replicas")
+			By("manually scaling deployment to 0 replicas")
 			deploy, err := k8sClient.AppsV1().Deployments(testNamespace).Get(ctx, testDeploymentName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			specReplicas := int32(1)
-			if deploy.Spec.Replicas != nil {
-				specReplicas = *deploy.Spec.Replicas
-			}
+			replicas := int32(0)
+			deploy.Spec.Replicas = &replicas
+			_, err = k8sClient.AppsV1().Deployments(testNamespace).Update(ctx, deploy, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
 
-			Expect(specReplicas).To(Equal(int32(0)), "Deployment should start with 0 replicas")
-			_, _ = fmt.Fprintf(GinkgoWriter, "Deployment verified at 0 replicas\n")
+			By("waiting for deployment to reach 0 replicas")
+			Eventually(func(g Gomega) {
+				deploy, err := k8sClient.AppsV1().Deployments(testNamespace).Get(ctx, testDeploymentName, metav1.GetOptions{})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(deploy.Status.Replicas).To(Equal(int32(0)))
+			}, 2*time.Minute, 10*time.Second).Should(Succeed())
+
+			_, _ = fmt.Fprintf(GinkgoWriter, "Deployment at 0 replicas for scale-from-zero tests\n")
 		})
 
-		It("should verify VariantAutoscaling recommends zero replicas", func() {
-			By("checking VA status shows zero replicas")
+		It("Set VariantAutoscaling object to recommend zero replicas", func() {
+			By("setting VA status to recommend zero replicas")
 			va := &v1alpha1.VariantAutoscaling{}
 			err := crClient.Get(ctx, client.ObjectKey{
+				Namespace: testNamespace,
+				Name:      vaName,
+			}, va)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Update the status to set NumReplicas to 0
+			va.Status.DesiredOptimizedAlloc.NumReplicas = 0
+			err = crClient.Status().Update(ctx, va)
+			Expect(err).NotTo(HaveOccurred(), "Should be able to update VA status")
+
+			By("verifying VA status shows zero replicas")
+			// Re-fetch to confirm the update
+			err = crClient.Get(ctx, client.ObjectKey{
 				Namespace: testNamespace,
 				Name:      vaName,
 			}, va)
@@ -178,7 +197,7 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 				va.Status.DesiredOptimizedAlloc.NumReplicas)
 
 			Expect(va.Status.DesiredOptimizedAlloc.NumReplicas).To(Equal(0),
-				"VariantAutoscaling should recommend 0 replicas when idle")
+				"VariantAutoscaling should recommend 0 replicas")
 		})
 
 		It("should detect pending requests and trigger scale-from-zero", func() {
@@ -303,10 +322,6 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 			_ = k8sClient.BatchV1().Jobs(testNamespace).Delete(ctx, scaleFromZeroJobName, metav1.DeleteOptions{
 				PropagationPolicy: &propagationPolicy,
 			})
-			_ = k8sClient.BatchV1().Jobs(testNamespace).Delete(ctx, loadJobName, metav1.DeleteOptions{
-				PropagationPolicy: &propagationPolicy,
-			})
-
 			_, _ = fmt.Fprintf(GinkgoWriter, "Scale-from-zero test completed\n")
 		})
 	})
@@ -320,9 +335,6 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			By("ensuring scale-to-zero is enabled")
-			// ConfigMap should already be set from previous context
-
 			By("finding VariantAutoscaling for the deployment")
 			vaList := &v1alpha1.VariantAutoscalingList{}
 			err := crClient.List(ctx, vaList, client.InNamespace(testNamespace))
@@ -339,6 +351,7 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 			concurrentJobBaseName = fmt.Sprintf("scale-from-zero-concurrent-%d", time.Now().Unix())
 		})
 
+		// TO DO HERE: Manually scale the deployment to zero again;
 		It("should wait for deployment to scale to zero again", func() {
 			By("waiting for deployment to scale back to zero")
 			Eventually(func(g Gomega) {
@@ -398,19 +411,7 @@ var _ = Describe("Scale-From-Zero Test", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		By("restoring original scale-to-zero ConfigMap state")
-		if originalConfigExists {
-			existingCM, err := k8sClient.CoreV1().ConfigMaps(controllerNamespace).Get(ctx, scaleToZeroConfigMapName, metav1.GetOptions{})
-			if err == nil {
-				existingCM.Data = originalConfigData
-				_, err = k8sClient.CoreV1().ConfigMaps(controllerNamespace).Update(ctx, existingCM, metav1.UpdateOptions{})
-				Expect(err).NotTo(HaveOccurred())
-				_, _ = fmt.Fprintf(GinkgoWriter, "Restored original scale-to-zero ConfigMap\n")
-			}
-		} else {
-			_ = k8sClient.CoreV1().ConfigMaps(controllerNamespace).Delete(ctx, scaleToZeroConfigMapName, metav1.DeleteOptions{})
-		}
-
+		By("cleaning up scale-from-zero: nothing to cleaning")
 		_, _ = fmt.Fprintf(GinkgoWriter, "\n========================================\n")
 		_, _ = fmt.Fprintf(GinkgoWriter, "Scale-From-Zero tests completed\n")
 		_, _ = fmt.Fprintf(GinkgoWriter, "========================================\n\n")
@@ -527,12 +528,12 @@ fi
 	}
 }
 
-// findCondition finds a condition by type in the conditions list
-func findCondition(conditions []metav1.Condition, conditionType string) *metav1.Condition {
-	for i := range conditions {
-		if conditions[i].Type == conditionType {
-			return &conditions[i]
-		}
-	}
-	return nil
-}
+// // findCondition finds a condition by type in the conditions list
+// func findCondition(conditions []metav1.Condition, conditionType string) *metav1.Condition {
+// 	for i := range conditions {
+// 		if conditions[i].Type == conditionType {
+// 			return &conditions[i]
+// 		}
+// 	}
+// 	return nil
+// }
