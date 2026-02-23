@@ -19,10 +19,10 @@ type Config struct {
 	infrastructure infrastructureConfig
 	tls            tlsConfig
 	prometheus     prometheusConfig
-	epp            eppConfig
-	features       featureFlagsConfig
-	saturation     saturationConfig  // namespace-aware
-	scaleToZero    scaleToZeroConfig // namespace-aware
+	//epp            eppConfig
+	features    featureFlagsConfig
+	saturation  saturationConfig  // namespace-aware
+	scaleToZero scaleToZeroConfig // namespace-aware
 
 }
 
@@ -60,10 +60,10 @@ type tlsConfig struct {
 	metricsCertKey  string
 }
 
-// eppConfig holds EPP (Endpoint Pool) integration configuration
-type eppConfig struct {
-	metricReaderBearerToken string
-}
+// // eppConfig holds EPP (Endpoint Pool) integration configuration
+// type eppConfig struct {
+// 	// Reserved for future EPP-specific configuration
+// }
 
 // featureFlagsConfig holds feature flags
 type featureFlagsConfig struct {
@@ -94,13 +94,12 @@ type scaleToZeroConfig struct {
 	namespaceConfigs map[string]ScaleToZeroConfigData
 }
 
-// StaticConfig holds configuration that is immutable after startup.
-// These settings are loaded once at startup and cannot be changed at runtime.
-// EPPConfig holds EPP (Endpoint Pool) integration configuration.
-type EPPConfig struct {
-	// EPP metric reader bearer token for pod scraping
-	MetricReaderBearerToken string // EPP_METRIC_READER_BEARER_TOKEN
-}
+// // StaticConfig holds configuration that is immutable after startup.
+// // These settings are loaded once at startup and cannot be changed at runtime.
+// // EPPConfig holds EPP (Endpoint Pool) integration configuration.
+// type EPPConfig struct {
+// 	// Reserved for future EPP-specific static configuration
+// }
 
 // ============================================================================
 // Infrastructure Getters (thread-safe)
@@ -252,18 +251,6 @@ func (c *Config) MetricsCertKey() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.tls.metricsCertKey
-}
-
-// ============================================================================
-// EPP Getters (thread-safe)
-// ============================================================================
-
-// EPPMetricReaderBearerToken returns the EPP metric reader bearer token.
-// Thread-safe.
-func (c *Config) EPPMetricReaderBearerToken() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.epp.metricReaderBearerToken
 }
 
 // ============================================================================
