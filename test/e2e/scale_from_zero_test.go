@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -81,111 +78,9 @@ var _ = Describe("Scale-From-Zero Feature", Label("full"), Ordered, func() {
 		// Additional delay to ensure the datastore is fully populated after EPP is ready
 		time.Sleep(5 * time.Second)
 
-		// Update scale-from-zero ConfigMap with BearerToken for EPP metrics collection
-		// This is required for the scale-from-zero engine to authenticate with EPP and query flow control queue metrics
-		By("Updating scale-from-zero ConfigMap with BearerToken for EPP metrics collection")
-		cmd := exec.Command("bash", "-c",
-			`kubectl -n workload-variant-autoscaler-system get secret workload-variant-autoscaler-controller-manager-token -o jsonpath='{.data.token}' | base64 --decode`)
-
-		output, err := cmd.CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), "Failed to get and decode token")
-
-		bearerToken := strings.TrimSpace(string(output))
-		Expect(bearerToken).NotTo(BeEmpty(), "Token should not be empty")
-
-		// Get the existing ConfigMap
-		scaleFromZeroConfigMapName := "workload-variant-autoscaler-variantautoscaling-config"
-		scaleFromZeroCM, err := k8sClient.CoreV1().ConfigMaps("workload-variant-autoscaler-system").Get(ctx, scaleFromZeroConfigMapName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Should be able to get ConfigMap: %s", scaleFromZeroConfigMapName))
-
-		// Update the bearer token key
-		// Note: The token should NOT include "Bearer" prefix - the PodScrapingSource adds it automatically
-		if scaleFromZeroCM.Data == nil {
-			scaleFromZeroCM.Data = make(map[string]string)
-		}
-		scaleFromZeroCM.Data["EPP_METRIC_READER_BEARER_TOKEN"] = bearerToken
-		GinkgoWriter.Printf("Updated ConfigMap with bearer token (length: %d chars)\n", len(bearerToken))
-
-		// Update the ConfigMap
-		_, err = k8sClient.CoreV1().ConfigMaps("workload-variant-autoscaler-system").Update(ctx, scaleFromZeroCM, metav1.UpdateOptions{})
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Should be able to update scale-from-zero ConfigMap: %s", scaleFromZeroConfigMapName))
-
-		// Restart controller pods to pick up the new config
-		By("Restarting controller pods to pick up new bearer token config")
-		cmd = exec.Command("kubectl", "delete", "pods",
-			"-n", "workload-variant-autoscaler-system",
-			"-l", "control-plane=controller-manager",
-			"--wait=false")
-		output, err = cmd.CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("kubectl delete failed: %s", string(output)))
-
-		// Wait for controller pods to be ready after restart
-		By("Waiting for controller pods to be ready after restart")
-		Eventually(func(g Gomega) {
-			podList, err := k8sClient.CoreV1().Pods("workload-variant-autoscaler-system").List(ctx, metav1.ListOptions{
-				LabelSelector: "control-plane=controller-manager",
-			})
-			g.Expect(err).NotTo(HaveOccurred(), "Should be able to list controller pods")
-			g.Expect(len(podList.Items)).To(BeNumerically(">", 0), "Controller pods should exist")
-
-			// Check that at least one pod is ready
-			hasReadyPod := false
-			for _, pod := range podList.Items {
-				for _, condition := range pod.Status.Conditions {
-					if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
-						hasReadyPod = true
-						break
-					}
-				}
-				if hasReadyPod {
-					break
-				}
-			}
-			g.Expect(hasReadyPod).To(BeTrue(), "At least one controller pod should be ready")
-		}, 5*time.Minute, 10*time.Second).Should(Succeed(), "Controller pods should be ready after restart")
-
-		// Force InferencePool reconciliation to ensure it's re-registered with the new bearer token
-		// After controller restart, the datastore is empty, so the InferencePool reconciler needs to run
-		// to re-register the pool. We trigger this by annotating the InferencePool resource, which will
-		// cause the reconciler to process it and call PoolSet, creating a new PodScrapingSource with
-		// the bearer token from the updated config.
-		By("Triggering InferencePool reconciliation to re-register with new bearer token")
-		Eventually(func(g Gomega) {
-			// Get the InferencePool resource
-			inferencePool := &unstructured.Unstructured{}
-			inferencePool.SetGroupVersionKind(schema.GroupVersionKind{
-				Group:   "inference.networking.k8s.io",
-				Version: "v1",
-				Kind:    "InferencePool",
-			})
-			err := crClient.Get(ctx, client.ObjectKey{
-				Namespace: cfg.LLMDNamespace,
-				Name:      "gaie-sim",
-			}, inferencePool)
-			g.Expect(err).NotTo(HaveOccurred(), "Should be able to get InferencePool")
-
-			// Add an annotation to trigger reconciliation
-			annotations := inferencePool.GetAnnotations()
-			if annotations == nil {
-				annotations = make(map[string]string)
-			}
-			annotations["test.llm-d.ai/reconcile-trigger"] = fmt.Sprintf("%d", time.Now().Unix())
-			inferencePool.SetAnnotations(annotations)
-
-			// Update the InferencePool to trigger reconciliation
-			err = crClient.Update(ctx, inferencePool)
-			g.Expect(err).NotTo(HaveOccurred(), "Should be able to update InferencePool to trigger reconciliation")
-		}, 30*time.Second, 2*time.Second).Should(Succeed(), "Should trigger InferencePool reconciliation")
-
-		// Wait for InferencePool reconciler to process the update and re-register the pool
-		// The reconciler will call PoolSet, which will create a new PodScrapingSource with the
-		// bearer token from the updated config (loaded at startup after restart).
-		By("Waiting for InferencePool to be re-registered with new bearer token")
-		time.Sleep(30 * time.Second)
-
 		By("Creating model service deployment with 0 initial replicas")
 		// Create deployment with 0 replicas using the fixture
-		err = fixtures.CreateModelService(ctx, k8sClient, cfg.LLMDNamespace, modelServiceName, poolName, cfg.ModelID, cfg.UseSimulator, cfg.MaxNumSeqs)
+		err := fixtures.CreateModelService(ctx, k8sClient, cfg.LLMDNamespace, modelServiceName, poolName, cfg.ModelID, cfg.UseSimulator, cfg.MaxNumSeqs)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create model service")
 
 		// Immediately scale deployment to 0 (with retry to handle race conditions)

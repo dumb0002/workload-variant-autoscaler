@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/llm-d/llm-d-workload-variant-autoscaler/internal/collector/source"
@@ -33,6 +34,14 @@ var (
 	errPoolNotSynced = errors.New("EndpointPool not found in datastore")
 	errPoolIsNull    = errors.New("EndpointPool object is nil, does not exist")
 )
+
+// getControllerManagerTokenSecretName returns the name of the controller manager token secret.
+// It reads from the CONTROLLER_TOKEN_SECRET_NAME environment variable, which is set by the Helm chart
+// to match the actual secret name (including any custom release name or fullnameOverride).
+// If not set, returns an empty string to indicate no secret-based authentication should be used.
+func getControllerManagerTokenSecretName() string {
+	return os.Getenv("CONTROLLER_TOKEN_SECRET_NAME")
+}
 
 // The datastore is a local cache of relevant data for the given InferencePool (currently all pulled from k8s-api)
 // It also tracks namespaces that should be watched for ConfigMaps (namespaces with VariantAutoscaling or InferencePool resources).
@@ -85,16 +94,16 @@ func (ds *datastore) PoolSet(ctx context.Context, client client.Client, pool *po
 	}
 
 	if ds.registry.Get(pool.Name) == nil {
-		// Create pod source
-		var token string
-		if ds.config != nil {
-			token = ds.config.EPPMetricReaderBearerToken()
-		}
+		// Create pod source using the WVA controller manager token secret
+		// The secret name is dynamically determined based on the service account name
+		// The secret is located in the controller's namespace (not the service's namespace)
 		podConfig := pod.PodScrapingSourceConfig{
-			ServiceName:      pool.EndpointPicker.ServiceName,
-			ServiceNamespace: pool.EndpointPicker.Namespace,
-			MetricsPort:      pool.EndpointPicker.MetricsPortNumber,
-			BearerToken:      token,
+			ServiceName:                  pool.EndpointPicker.ServiceName,
+			ServiceNamespace:             pool.EndpointPicker.Namespace,
+			MetricsPort:                  pool.EndpointPicker.MetricsPortNumber,
+			MetricsReaderSecretName:      getControllerManagerTokenSecretName(),
+			MetricsReaderSecretNamespace: config.SystemNamespace(),
+			MetricsReaderSecretKey:       "token",
 		}
 
 		podSource, err := pod.NewPodScrapingSource(ctx, client, podConfig)

@@ -90,6 +90,7 @@ source, err := pod.NewPodScrapingSource(ctx, k8sClient, config)
 | `MetricsPath` | `string` | No | `"/metrics"` | HTTP path for metrics endpoint |
 | `MetricsScheme` | `string` | No | `"http"` | URL scheme (`"http"` or `"https"`) |
 | `MetricsReaderSecretName` | `string` | No | `""` | Secret name containing Bearer token (optional) |
+| `MetricsReaderSecretNamespace` | `string` | No | `ServiceNamespace` | Namespace where the secret is located (defaults to service namespace) |
 | `MetricsReaderSecretKey` | `string` | No | `"token"` | Key in secret containing the token |
 | `BearerToken` | `string` | No | `""` | Direct Bearer token (overrides secret) |
 | `ScrapeTimeout` | `time.Duration` | No | `5s` | HTTP request timeout per pod |
@@ -108,7 +109,7 @@ config := pod.PodScrapingSourceConfig{
 }
 ```
 
-#### With Authentication
+#### With Authentication (Secret in Same Namespace)
 
 ```go
 config := pod.PodScrapingSourceConfig{
@@ -117,6 +118,20 @@ config := pod.PodScrapingSourceConfig{
     MetricsPort:             9090,
     MetricsReaderSecretName: "metrics-reader-secret",
     MetricsReaderSecretKey:  "token",
+    // MetricsReaderSecretNamespace defaults to ServiceNamespace if not specified
+}
+```
+
+#### With Authentication (Secret in Different Namespace)
+
+```go
+config := pod.PodScrapingSourceConfig{
+    ServiceName:                  "epp-service",
+    ServiceNamespace:             "default",
+    MetricsPort:                  9090,
+    MetricsReaderSecretName:      "controller-manager-token",
+    MetricsReaderSecretNamespace: "workload-variant-autoscaler-system", // Secret in controller namespace
+    MetricsReaderSecretKey:       "token",
 }
 ```
 
@@ -371,3 +386,24 @@ func (e *MyEngine) CheckPendingRequests(ctx context.Context) (bool, error) {
 - Authentication is **optional** - if `MetricsReaderSecretName` is empty, no auth header is sent
 - If secret doesn't exist, authentication is skipped (no error)
 - `BearerToken` takes precedence over secret-based auth
+- **Secret Namespace**: By default, secrets are looked up in the service's namespace (`ServiceNamespace`). Use `MetricsReaderSecretNamespace` to specify a different namespace (e.g., when the controller's service account token is in a different namespace than the target service)
+
+### Cross-Namespace Authentication
+
+When the authentication secret is in a different namespace than the target service (common when using controller service account tokens), you must:
+
+1. Set `MetricsReaderSecretNamespace` to the namespace containing the secret
+2. Ensure the controller has RBAC permissions to read secrets in that namespace
+
+Example use case: The workload-variant-autoscaler controller uses its own service account token (in `workload-variant-autoscaler-system` namespace) to authenticate with EPP pods (in a different namespace).
+
+```go
+config := pod.PodScrapingSourceConfig{
+    ServiceName:                  "epp-service",
+    ServiceNamespace:             "llm-d",  // EPP service namespace
+    MetricsPort:                  9090,
+    MetricsReaderSecretName:      "workload-variant-autoscaler-controller-manager-token",
+    MetricsReaderSecretNamespace: "workload-variant-autoscaler-system",  // Controller namespace
+    MetricsReaderSecretKey:       "token",
+}
+```
