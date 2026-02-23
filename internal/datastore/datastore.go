@@ -38,9 +38,13 @@ var (
 // getControllerManagerTokenSecretName returns the name of the controller manager token secret.
 // It reads from the CONTROLLER_TOKEN_SECRET_NAME environment variable, which is set by the Helm chart
 // to match the actual secret name (including any custom release name or fullnameOverride).
-// If not set, returns an empty string to indicate no secret-based authentication should be used.
+// If not set, defaults to "workload-variant-autoscaler-controller-manager-token" for backward compatibility.
 func getControllerManagerTokenSecretName() string {
-	return os.Getenv("CONTROLLER_TOKEN_SECRET_NAME")
+	secretName := os.Getenv("CONTROLLER_TOKEN_SECRET_NAME")
+	if secretName == "" {
+		return "workload-variant-autoscaler-controller-manager-token"
+	}
+	return secretName
 }
 
 // The datastore is a local cache of relevant data for the given InferencePool (currently all pulled from k8s-api)

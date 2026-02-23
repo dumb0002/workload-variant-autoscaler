@@ -490,9 +490,8 @@ The following table lists all static configuration parameters with their CLI fla
 | Scale to zero | — | `WVA_SCALE_TO_ZERO` | bool | `false` | Enable scale-to-zero feature |
 | Limited mode | — | `WVA_LIMITED_MODE` | bool | `false` | Enable limited mode |
 | Scale-from-zero concurrency | — | `SCALE_FROM_ZERO_ENGINE_MAX_CONCURRENCY` | int | `10` | Max concurrent scale-from-zero operations |
-| Controller token secret | — | `CONTROLLER_TOKEN_SECRET_NAME` | string | Set by Helm | Name of the Kubernetes secret containing the controller's service account token for EPP authentication |
+| Controller token secret | — | `CONTROLLER_TOKEN_SECRET_NAME` | string | `workload-variant-autoscaler-controller-manager-token` | Name of the Kubernetes secret containing the controller's service account token |
 
-**Note**: `CONTROLLER_TOKEN_SECRET_NAME` is automatically set by the Helm chart to match the actual secret name (including any custom release name or fullnameOverride). This ensures authentication works correctly regardless of the Helm release configuration.
 
 ### Fail-Fast Validation
 
