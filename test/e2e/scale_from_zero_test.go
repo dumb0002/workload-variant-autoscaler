@@ -33,9 +33,9 @@ var _ = Describe("Scale-From-Zero Feature", Label("smoke", "full"), Ordered, fun
 
 	BeforeAll(func() {
 		// Skip if HPAScaleToZero is not enabled
-		if !cfg.ScaleToZeroEnabled {
-			Skip("HPAScaleToZero feature gate is not enabled; skipping scale-from-zero test")
-		}
+		// if !cfg.ScaleToZeroEnabled {
+		// 	Skip("HPAScaleToZero feature gate is not enabled; skipping scale-from-zero test")
+		// }
 
 		// Note: InferencePool should already exist from infra-only deployment
 		// We no longer create InferencePools in individual tests
