@@ -57,7 +57,7 @@ func getEPPMetricsToken() string {
 
 	// Log token info for debugging (without exposing the actual token)
 	if token == "" {
-		ctrl.Log.Info("EPP metrics token file is empty", "path", tokenPath)
+		ctrl.Log.V(logging.DEBUG).Info("EPP metrics token file is empty", "path", tokenPath)
 	} else {
 		ctrl.Log.V(logging.DEBUG).Info("EPP metrics token loaded successfully",
 			"path", tokenPath,
