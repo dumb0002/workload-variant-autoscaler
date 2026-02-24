@@ -23,7 +23,7 @@ import (
 
 // Scale-from-zero test validates that the WVA controller correctly detects pending requests
 // and scales up deployments from zero replicas when the HPAScaleToZero feature gate is enabled.
-var _ = Describe("Scale-From-Zero Feature", Label("full"), Ordered, func() {
+var _ = Describe("Scale-From-Zero Feature", Label("smoke", "full"), Ordered, func() {
 	var (
 		poolName         = "scale-from-zero-pool"
 		modelServiceName = "scale-from-zero-ms"
